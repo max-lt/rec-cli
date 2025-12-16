@@ -12,7 +12,14 @@ Hello, this is a test.
 ## Install
 
 ```bash
-cargo install --path .
+cargo install --git https://github.com/max-lt/rec-cli
+```
+
+Or from source:
+
+```bash
+git clone https://github.com/max-lt/rec-cli
+cargo install --path rec-cli
 ```
 
 Requires a [Mistral API key](https://console.mistral.ai/):
