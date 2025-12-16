@@ -40,6 +40,8 @@ fn status_up(msg: &str) {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
+
+    #[cfg(debug_assertions)]
     dotenvy::dotenv().ok();
 
     let api_key = std::env::var("MISTRAL_API_KEY").map_err(|_| "MISTRAL_API_KEY not set")?;

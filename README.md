@@ -28,8 +28,6 @@ Requires a [Mistral API key](https://console.mistral.ai/):
 export MISTRAL_API_KEY=your_key_here
 ```
 
-Or create a `.env` file in your working directory.
-
 ## Usage
 
 ```bash
