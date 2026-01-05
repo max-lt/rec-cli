@@ -28,12 +28,20 @@ Requires a [Mistral API key](https://console.mistral.ai/):
 export MISTRAL_API_KEY=your_key_here
 ```
 
+To make it permanent, add this line to your `~/.zshrc` or `~/.bashrc`:
+
+```bash
+echo 'export MISTRAL_API_KEY=your_key_here' >> ~/.zshrc  # or ~/.bashrc
+```
+
 ## Usage
 
 ```bash
 rec              # Record → Enter → transcription to stdout
 rec -c           # Same, but also copy to clipboard
 rec --clip       # Same as -c
+rec -f audio.wav # Transcribe an existing audio file
+rec --file audio.wav # Same as -f
 ```
 
 ### Pipe it
