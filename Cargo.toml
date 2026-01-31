@@ -1,6 +1,6 @@
 [package]
 name = "rec"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 description = "Quick speech-to-text for devs"
 
@@ -11,12 +11,12 @@ path = "src/main.rs"
 [dependencies]
 arboard = "3.6.1"
 clap = { version = "4", features = ["derive"] }
-cpal = "0.16.0"
+cpal = "0.17"
 hound = "3.5.1"
-reqwest = { version = "0.12.26", features = ["multipart", "json"] }
+reqwest = { version = "0.13", features = ["multipart", "json"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-dirs = "5"
+dirs = "6"
 chrono = { version = "0.4", features = ["serde"] }
 dotenvy = "0.15"

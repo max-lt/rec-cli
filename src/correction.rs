@@ -103,11 +103,13 @@ pub async fn correct_transcription(
         r#"Correct this voice transcription taking into account the following technical terms:
 {}
 {}Rules:
-- Only correct obvious mistakes and mistranscribed words
-- Preserve the original punctuation and sentence structure
-- Don't translate, don't rephrase, just correct
-- If a word sounds like one from the list, use it
-- Use the context from previous corrections to understand recurring style and terms
+- Correct ALL mistakes: typos, grammar errors, wrong words, and mistranscriptions
+- Fix spelling errors and word formation mistakes (e.g., "déassérialiser" → "désérialiser")
+- Replace phonetically similar but wrong words with the correct ones
+- Use technical terms from the custom words list when they match phonetically
+- Preserve the original meaning, punctuation style, and sentence structure
+- Don't translate to another language, don't add or remove content
+- Use the context from previous corrections to understand recurring patterns
 
 Original transcription:
 {}
