@@ -13,7 +13,8 @@ use std::io::{self, BufWriter, Write};
 use std::sync::{Arc, Mutex};
 
 const API_URL: &str = "https://api.mistral.ai/v1/audio/transcriptions";
-const MODEL: &str = "voxtral-mini-2507";
+const MODEL_V1: &str = "voxtral-mini-2507";
+const MODEL_V2: &str = "voxtral-mini-2602";
 
 #[derive(Parser)]
 #[command(name = "rec", about = "Quick speech-to-text for devs")]
@@ -36,6 +37,10 @@ struct Args {
     /// Show Claude's correction comments
     #[arg(long, global = true)]
     debug: bool,
+
+    /// Use voxtral-mini-2602 model (v2)
+    #[arg(long, global = true)]
+    v2: bool,
 }
 
 #[derive(Subcommand)]
@@ -160,6 +165,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     status("Transcribing...");
 
     // Transcribe
+    let model = if args.v2 { MODEL_V2 } else { MODEL_V1 };
     let client = reqwest::Client::new();
     let form = multipart::Form::new()
         .part(
@@ -168,7 +174,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .file_name("audio.wav")
                 .mime_str("audio/wav")?,
         )
-        .text("model", MODEL);
+        .text("model", model);
 
     let resp = client
         .post(API_URL)

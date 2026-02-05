@@ -81,7 +81,11 @@ pub async fn correct_transcription(
     let custom_words_list = if custom_words.is_empty() {
         "(no custom words configured)".to_string()
     } else {
-        custom_words.join(", ")
+        custom_words
+            .iter()
+            .map(|w| format!("- {}", w))
+            .collect::<Vec<_>>()
+            .join("\n")
     };
 
     let context = if history.is_empty() {
@@ -100,16 +104,21 @@ pub async fn correct_transcription(
     };
 
     let prompt = format!(
-        r#"Correct this voice transcription taking into account the following technical terms:
+        r#"You are a voice transcription corrector. Your job is to fix ONLY obvious transcription errors based on phonetic similarity.
+
+Custom technical terms (use ONLY if phonetically similar):
 {}
 {}Rules:
-- Correct ALL mistakes: typos, grammar errors, wrong words, and mistranscriptions
-- Fix spelling errors and word formation mistakes (e.g., "déassérialiser" → "désérialiser")
-- Replace phonetically similar but wrong words with the correct ones
-- Use technical terms from the custom words list when they match phonetically
-- Preserve the original meaning, punctuation style, and sentence structure
-- Don't translate to another language, don't add or remove content
-- Use the context from previous corrections to understand recurring patterns
+1. ONLY correct clear phonetic mistakes (words that sound similar but were transcribed wrong)
+2. Fix obvious typos and grammar errors
+3. Fix word formation mistakes (e.g., "déassérialiser" → "désérialiser")
+4. DO NOT infer meaning from context - stick to phonetic corrections only
+5. DO NOT replace words with technical terms unless they are phonetically very similar
+6. When in doubt, prefer keeping the original text unchanged
+7. Preserve the original meaning, punctuation, and sentence structure
+8. Don't translate, don't add or remove content
+
+IMPORTANT: Be conservative. Only make corrections you are confident about based on phonetics, not on what might make sense given the context.
 
 Original transcription:
 {}
