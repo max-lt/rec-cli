@@ -146,6 +146,17 @@ Status messages (`Recording...`, `2.1s transcribing...`, `Correcting with Claude
 
 **Note**: Mistral's Voxtral API does not support vocabulary hints, so custom words are only used by Claude for post-correction.
 
+### Using Rec API
+
+Alternatively, you can use [Rec API](https://rec-api.workers.rocks) instead of calling Mistral directly. Your audio data may be used for research purposes.
+
+```bash
+export REC_API_URL=https://rec-api.workers.rocks
+export REC_API_KEY=rec_your_token_here
+```
+
+When both `REC_API_URL` and `REC_API_KEY` are set, `rec` will use the API automatically.
+
 ## License
 
 MIT
