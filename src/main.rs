@@ -40,6 +40,14 @@ struct Args {
     /// Use voxtral-mini-2602 model (v2)
     #[arg(long, global = true)]
     v2: bool,
+
+    /// Language code (e.g. 'en', 'fr')
+    #[arg(short = 'l', long, alias = "lang", global = true)]
+    language: Option<String>,
+
+    /// Send custom words as context_bias to Mistral
+    #[arg(short = 'b', long, global = true)]
+    bias: bool,
 }
 
 #[derive(Subcommand)]
@@ -170,8 +178,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     status("Transcribing...");
 
+    let config = config::Config::load()?;
+
     let model = if args.v2 { MODEL_V2 } else { MODEL_V1 };
-    let text = backend.transcribe(wav_buffer, model).await?;
+    let text = backend
+        .transcribe(backend::TranscribeOptions {
+            wav_data: wav_buffer,
+            model: model.to_string(),
+            language: args.language,
+            context_bias: if args.bias {
+                config
+                    .custom_words
+                    .iter()
+                    .flat_map(|w| {
+                        w.split(':')
+                            .next()
+                            .unwrap_or(w)
+                            .split_whitespace()
+                            .map(|s| s.to_string())
+                            .collect::<Vec<_>>()
+                    })
+                    .filter(|w| !w.is_empty())
+                    .collect()
+            } else {
+                vec![]
+            },
+        })
+        .await?;
 
     let final_text = if args.correct {
         status("Correcting with Claude...");
@@ -179,7 +212,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let anthropic_key =
             std::env::var("ANTHROPIC_API_KEY").map_err(|_| "ANTHROPIC_API_KEY not set")?;
 
-        let config = config::Config::load()?;
         let history = config::Config::load_history().unwrap_or_default();
 
         match correction::correct_transcription(

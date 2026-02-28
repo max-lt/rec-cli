@@ -8,6 +8,13 @@ struct TranscriptionResponse {
     text: String,
 }
 
+pub struct TranscribeOptions {
+    pub wav_data: Vec<u8>,
+    pub model: String,
+    pub language: Option<String>,
+    pub context_bias: Vec<String>,
+}
+
 pub enum Backend {
     Mistral { api_key: String },
     RecApi { api_url: String, api_key: String },
@@ -16,32 +23,38 @@ pub enum Backend {
 impl Backend {
     pub async fn transcribe(
         &self,
-        wav_data: Vec<u8>,
-        model: &str,
+        opts: TranscribeOptions,
     ) -> Result<String, Box<dyn std::error::Error>> {
         match self {
-            Backend::Mistral { api_key } => transcribe_mistral(wav_data, model, api_key).await,
+            Backend::Mistral { api_key } => transcribe_mistral(&opts, api_key).await,
             Backend::RecApi { api_url, api_key } => {
-                transcribe_rec_api(wav_data, model, api_url, api_key).await
+                transcribe_rec_api(&opts, api_url, api_key).await
             }
         }
     }
 }
 
 async fn transcribe_mistral(
-    wav_data: Vec<u8>,
-    model: &str,
+    opts: &TranscribeOptions,
     api_key: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
-    let form = multipart::Form::new()
+    let mut form = multipart::Form::new()
         .part(
             "file",
-            multipart::Part::bytes(wav_data)
+            multipart::Part::bytes(opts.wav_data.clone())
                 .file_name("audio.wav")
                 .mime_str("audio/wav")?,
         )
-        .text("model", model.to_string());
+        .text("model", opts.model.clone());
+
+    if let Some(lang) = &opts.language {
+        form = form.text("language", lang.clone());
+    }
+
+    for term in &opts.context_bias {
+        form = form.text("context_bias", term.clone());
+    }
 
     let resp = client
         .post(MISTRAL_URL)
@@ -60,22 +73,29 @@ async fn transcribe_mistral(
 }
 
 async fn transcribe_rec_api(
-    wav_data: Vec<u8>,
-    model: &str,
+    opts: &TranscribeOptions,
     api_url: &str,
     api_key: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
     let url = format!("{}/api/transcribe", api_url.trim_end_matches('/'));
 
-    let form = multipart::Form::new()
+    let mut form = multipart::Form::new()
         .part(
             "file",
-            multipart::Part::bytes(wav_data)
+            multipart::Part::bytes(opts.wav_data.clone())
                 .file_name("audio.wav")
                 .mime_str("audio/wav")?,
         )
-        .text("model", model.to_string());
+        .text("model", opts.model.clone());
+
+    if let Some(lang) = &opts.language {
+        form = form.text("language", lang.clone());
+    }
+
+    for term in &opts.context_bias {
+        form = form.text("context_bias", term.clone());
+    }
 
     let resp = client
         .post(&url)
