@@ -15,7 +15,7 @@ local = ["dep:voxtral-mlx", "dep:mlx-rs", "dep:hf-hub"]
 
 [dependencies]
 arboard = "3.6.1"
-voxtral-mlx = { git = "https://github.com/max-lt/voxtral-mlx-rs", rev = "42e4d7ae32bb41d0a9846f5d232d485c7a1c12d0", optional = true }
+voxtral-mlx = { git = "https://github.com/max-lt/voxtral-mlx-rs", rev = "a9592e8d03ac877eb8d861317babe91b8212c794", optional = true }
 mlx-rs = { git = "https://github.com/oxideai/mlx-rs", optional = true }
 hf-hub = { version = "0.4", default-features = false, features = ["ureq"], optional = true }
 clap = { version = "4", features = ["derive"] }

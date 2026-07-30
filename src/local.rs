@@ -7,9 +7,14 @@ use voxtral_mlx::audio::{self, mel::MelSpectrogram, pad::PadConfig};
 use voxtral_mlx::model::config::VoxtralConfig;
 use voxtral_mlx::model::generate::VoxtralRealtime;
 use voxtral_mlx::model::weights::WeightMap;
-use voxtral_mlx::tokenizer::VoxtralTokenizer;
+use voxtral_mlx::tokenizer::{TekkenEncoder, VoxtralTokenizer};
 
 pub const DEFAULT_WEIGHTS: &str = "mlx-community/Voxtral-Mini-4B-Realtime-6bit";
+
+/// Additive logit boost for --bias vocabulary words: enough to tip the
+/// balance toward a known word the model already finds plausible, without
+/// forcing it into unrelated audio.
+const CONTEXT_BIAS_STRENGTH: f32 = 3.0;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -34,8 +39,24 @@ fn resolve_weights_dir(weights: &str) -> Result<PathBuf> {
         .to_path_buf())
 }
 
-pub fn transcribe(wav_data: &[u8], weights: &str) -> Result<String> {
+pub fn transcribe(wav_data: &[u8], weights: &str, bias_words: &[String]) -> Result<String> {
     let snapshot = resolve_weights_dir(weights)?;
+
+    // Words get boosted both standalone and with a leading space (how they
+    // appear mid-sentence after tekken BPE).
+    let logit_bias: Vec<(u32, f32)> = if bias_words.is_empty() {
+        vec![]
+    } else {
+        let encoder = TekkenEncoder::from_file(snapshot.join("tekken.json"))?;
+        let mut ids = std::collections::HashSet::new();
+        for word in bias_words {
+            ids.extend(encoder.encode(word));
+            ids.extend(encoder.encode(&format!(" {word}")));
+        }
+        ids.into_iter()
+            .map(|id| (id, CONTEXT_BIAS_STRENGTH))
+            .collect()
+    };
 
     let config = VoxtralConfig::from_file(snapshot.join("config.json"))?;
     let quant = config
@@ -60,6 +81,6 @@ pub fn transcribe(wav_data: &[u8], weights: &str) -> Result<String> {
     let flat: Vec<f32> = mel_frames.into_iter().flatten().collect();
     let mel = mlx_rs::Array::from_slice(&flat, &[t, n_mels]).transpose()?; // [n_mels, T]
 
-    let tokens = model.transcribe_tokens(&mel, 0.0)?;
+    let tokens = model.transcribe_tokens_biased(&mel, 0.0, &logit_bias)?;
     Ok(tokenizer.decode(&tokens)?.trim().to_string())
 }

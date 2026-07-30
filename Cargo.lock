@@ -3072,7 +3072,7 @@ dependencies = [
 [[package]]
 name = "voxtral-mlx"
 version = "0.1.0"
-source = "git+https://github.com/max-lt/voxtral-mlx-rs?rev=42e4d7ae32bb41d0a9846f5d232d485c7a1c12d0#42e4d7ae32bb41d0a9846f5d232d485c7a1c12d0"
+source = "git+https://github.com/max-lt/voxtral-mlx-rs?rev=a9592e8d03ac877eb8d861317babe91b8212c794#a9592e8d03ac877eb8d861317babe91b8212c794"
 dependencies = [
  "anyhow",
  "audioadapter-buffers",

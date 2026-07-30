@@ -33,7 +33,9 @@ impl Backend {
                 transcribe_rec_api(&opts, api_url, api_key).await
             }
             #[cfg(feature = "local")]
-            Backend::Local { weights } => crate::local::transcribe(&opts.wav_data, weights),
+            Backend::Local { weights } => {
+                crate::local::transcribe(&opts.wav_data, weights, &opts.context_bias)
+            }
         }
     }
 }
