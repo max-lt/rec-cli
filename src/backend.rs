@@ -18,6 +18,8 @@ pub struct TranscribeOptions {
 pub enum Backend {
     Mistral { api_key: String },
     RecApi { api_url: String, api_key: String },
+    #[cfg(feature = "local")]
+    Local { weights: String },
 }
 
 impl Backend {
@@ -30,6 +32,8 @@ impl Backend {
             Backend::RecApi { api_url, api_key } => {
                 transcribe_rec_api(&opts, api_url, api_key).await
             }
+            #[cfg(feature = "local")]
+            Backend::Local { weights } => crate::local::transcribe(&opts.wav_data, weights),
         }
     }
 }

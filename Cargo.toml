@@ -8,8 +8,16 @@ description = "Quick speech-to-text for devs"
 name = "rec"
 path = "src/main.rs"
 
+[features]
+# Local transcription with the MLX Voxtral model (--local). Apple Silicon
+# only; pulls in the full MLX build (requires Xcode's Metal toolchain).
+local = ["dep:voxtral-mlx", "dep:mlx-rs", "dep:hf-hub"]
+
 [dependencies]
 arboard = "3.6.1"
+voxtral-mlx = { git = "https://github.com/max-lt/voxtral-mlx-rs", rev = "42e4d7ae32bb41d0a9846f5d232d485c7a1c12d0", optional = true }
+mlx-rs = { git = "https://github.com/oxideai/mlx-rs", optional = true }
+hf-hub = { version = "0.4", default-features = false, features = ["ureq"], optional = true }
 clap = { version = "4", features = ["derive"] }
 cpal = "0.17"
 hound = "3.5.1"

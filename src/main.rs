@@ -3,6 +3,8 @@
 mod backend;
 mod config;
 mod correction;
+#[cfg(feature = "local")]
+mod local;
 
 use arboard::Clipboard;
 use backend::Backend;
@@ -48,12 +50,40 @@ struct Args {
     /// Send custom words as context_bias to Mistral
     #[arg(short = 'b', long, global = true)]
     bias: bool,
+
+    /// Transcribe with the local MLX Voxtral model, no API call
+    /// (ignores --v2/--language/--bias)
+    #[cfg(feature = "local")]
+    #[arg(long, global = true)]
+    local: bool,
 }
 
 #[derive(Subcommand)]
 enum Commands {
     /// Add a custom word to the vocabulary (for Claude correction)
     AddWord { word: String },
+}
+
+#[cfg_attr(not(feature = "local"), allow(unused_variables))]
+fn select_backend(args: &Args) -> Result<Backend, Box<dyn std::error::Error>> {
+    #[cfg(feature = "local")]
+    if args.local {
+        let weights =
+            std::env::var("REC_LOCAL_WEIGHTS").unwrap_or_else(|_| local::DEFAULT_WEIGHTS.into());
+        return Ok(Backend::Local { weights });
+    }
+
+    let rec_api_key = std::env::var("REC_API_KEY").ok();
+    let rec_api_url = std::env::var("REC_API_URL").ok();
+    let mistral_key = std::env::var("MISTRAL_API_KEY").ok();
+
+    if let (Some(api_key), Some(api_url)) = (rec_api_key, rec_api_url) {
+        Ok(Backend::RecApi { api_url, api_key })
+    } else if let Some(api_key) = mistral_key {
+        Ok(Backend::Mistral { api_key })
+    } else {
+        Err("Set REC_API_KEY + REC_API_URL or MISTRAL_API_KEY".into())
+    }
 }
 
 /// Clear line and print status
@@ -84,18 +114,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    // Select backend
-    let rec_api_key = std::env::var("REC_API_KEY").ok();
-    let rec_api_url = std::env::var("REC_API_URL").ok();
-    let mistral_key = std::env::var("MISTRAL_API_KEY").ok();
-
-    let backend = if let (Some(api_key), Some(api_url)) = (rec_api_key, rec_api_url) {
-        Backend::RecApi { api_url, api_key }
-    } else if let Some(api_key) = mistral_key {
-        Backend::Mistral { api_key }
-    } else {
-        return Err("Set REC_API_KEY + REC_API_URL or MISTRAL_API_KEY".into());
-    };
+    let backend = select_backend(&args)?;
 
     let wav_buffer = if let Some(path) = &args.file {
         // Read audio file
