@@ -2133,9 +2133,7 @@ dependencies = [
  "cpal 0.17.3",
  "dirs",
  "dotenvy",
- "hf-hub",
  "hound",
- "mlx-rs",
  "reqwest",
  "serde",
  "serde_json",
@@ -3072,7 +3070,7 @@ dependencies = [
 [[package]]
 name = "voxtral-mlx"
 version = "0.1.0"
-source = "git+https://github.com/max-lt/voxtral-mlx-rs?rev=a9592e8d03ac877eb8d861317babe91b8212c794#a9592e8d03ac877eb8d861317babe91b8212c794"
+source = "git+https://github.com/max-lt/voxtral-mlx-rs?rev=54c2fe6ec04c137a9339b422a31ff4043c7a9729#54c2fe6ec04c137a9339b422a31ff4043c7a9729"
 dependencies = [
  "anyhow",
  "audioadapter-buffers",
