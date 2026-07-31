@@ -68,6 +68,18 @@ MACOSX_DEPLOYMENT_TARGET = "15.0"
 
 ## Usage
 
+### Local transcription
+
+```bash
+rec --local            # record & transcribe on-device, no API key needed
+rec --local --bias     # nudge decoding toward your custom words
+```
+
+`--v2` and `--language` are API-only and rejected in combination with `--local`.
+Weights (`mlx-community/Voxtral-Mini-4B-Realtime-6bit`, ~3.4 GB) download to
+`~/.cache/huggingface` on first run; override with `REC_LOCAL_WEIGHTS` (repo id
+or local snapshot directory).
+
 ### Basic transcription
 
 ```bash

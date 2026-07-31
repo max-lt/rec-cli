@@ -52,9 +52,8 @@ struct Args {
     bias: bool,
 
     /// Transcribe with the local MLX Voxtral model, no API call
-    /// (ignores --v2/--language; --bias works via local logit biasing)
     #[cfg(feature = "local")]
-    #[arg(long, global = true)]
+    #[arg(long, global = true, conflicts_with_all = ["v2", "language"])]
     local: bool,
 }
 
