@@ -41,6 +41,31 @@ echo 'export MISTRAL_API_KEY=your_key_here' >> ~/.zshrc  # or ~/.bashrc
 echo 'export ANTHROPIC_API_KEY=your_key_here' >> ~/.zshrc  # optional
 ```
 
+### Local transcription (optional)
+
+`--local` transcribes on-device with the MLX Voxtral model, no API call. Apple Silicon
+only, behind the `local` feature, needs Xcode's Metal toolchain
+(`xcodebuild -downloadComponent MetalToolchain`):
+
+```bash
+cargo install --features=local --path .
+```
+
+On macOS older than 26, set the deployment target to your OS version:
+
+```bash
+MACOSX_DEPLOYMENT_TARGET=15.0 cargo install --features=local --path .
+```
+
+Otherwise the `cmake` crate picks the SDK version (26.x), MLX builds its shaders for
+Metal 4, and `--local` aborts with `invalid value 'metal4.0' in '-std=metal4.0'`.
+An untracked `.cargo/config.toml` makes it stick:
+
+```toml
+[env]
+MACOSX_DEPLOYMENT_TARGET = "15.0"
+```
+
 ## Usage
 
 ### Basic transcription
