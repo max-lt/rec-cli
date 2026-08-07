@@ -16,10 +16,17 @@ pub struct TranscribeOptions {
 }
 
 pub enum Backend {
-    Mistral { api_key: String },
-    RecApi { api_url: String, api_key: String },
+    Mistral {
+        api_key: String,
+    },
+    RecApi {
+        api_url: String,
+        api_key: String,
+    },
     #[cfg(feature = "local")]
-    Local { weights: String },
+    Local {
+        weights: String,
+    },
 }
 
 impl Backend {
