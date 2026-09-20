@@ -163,17 +163,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // A file, through the same encoder a capture uses. Nothing overlaps, so
     // it saves no time; it exists to compare both paths on equal audio.
     #[cfg(feature = "local")]
-    if args.local && !args.batch {
-        if let Some(path) = args.file.clone() {
-            let config = config::Config::load()?;
-            let weights = std::env::var("REC_LOCAL_WEIGHTS")
-                .unwrap_or_else(|_| local::DEFAULT_WEIGHTS.into());
-            status("Reading file...");
-            let bytes = std::fs::read(path)?;
-            status("Transcribing...");
-            let text = local::transcribe_chunked(&bytes, &weights, &bias_words(&args, &config))?;
-            return finish(text, &args, &config).await;
-        }
+    if args.local && !args.batch && let Some(path) = args.file.clone() {
+        let config = config::Config::load()?;
+        let weights =
+            std::env::var("REC_LOCAL_WEIGHTS").unwrap_or_else(|_| local::DEFAULT_WEIGHTS.into());
+        status("Reading file...");
+        let bytes = std::fs::read(path)?;
+        status("Transcribing...");
+        let text = local::transcribe_chunked(&bytes, &weights, &bias_words(&args, &config))?;
+        return finish(text, &args, &config).await;
     }
 
     // Local microphone capture, encoded while it runs. --batch keeps the old
