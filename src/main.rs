@@ -55,6 +55,11 @@ struct Args {
     #[cfg(feature = "local")]
     #[arg(long, global = true, conflicts_with_all = ["v2", "language"])]
     local: bool,
+
+    /// Read 16 kHz mono 16-bit PCM from stdin, and encode while it arrives
+    #[cfg(feature = "local")]
+    #[arg(long, global = true, requires = "local", conflicts_with = "file")]
+    pcm: bool,
 }
 
 #[derive(Subcommand)]
@@ -85,6 +90,26 @@ fn select_backend(args: &Args) -> Result<Backend, Box<dyn std::error::Error>> {
     }
 }
 
+/// Custom words, split into single tokens for context bias.
+fn bias_words(args: &Args, config: &config::Config) -> Vec<String> {
+    if !args.bias {
+        return vec![];
+    }
+    config
+        .custom_words
+        .iter()
+        .flat_map(|w| {
+            w.split(':')
+                .next()
+                .unwrap_or(w)
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+        })
+        .filter(|w| !w.is_empty())
+        .collect()
+}
+
 /// Clear line and print status
 fn status(msg: &str) {
     eprint!("\r\x1b[K{}", msg);
@@ -111,6 +136,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.save()?;
         eprintln!("Word added: {}", word);
         return Ok(());
+    }
+
+    // The caller records and pushes the samples in, so the encoder runs
+    // during the capture and only the decoder is left at the end.
+    #[cfg(feature = "local")]
+    if args.pcm {
+        let config = config::Config::load()?;
+        let weights =
+            std::env::var("REC_LOCAL_WEIGHTS").unwrap_or_else(|_| local::DEFAULT_WEIGHTS.into());
+        status("Listening...");
+        let text =
+            local::transcribe_stream(io::stdin().lock(), &weights, &bias_words(&args, &config))?;
+        return finish(text, &args, &config).await;
     }
 
     let backend = select_backend(&args)?;
@@ -203,27 +241,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .transcribe(backend::TranscribeOptions {
             wav_data: wav_buffer,
             model: model.to_string(),
-            language: args.language,
-            context_bias: if args.bias {
-                config
-                    .custom_words
-                    .iter()
-                    .flat_map(|w| {
-                        w.split(':')
-                            .next()
-                            .unwrap_or(w)
-                            .split_whitespace()
-                            .map(|s| s.to_string())
-                            .collect::<Vec<_>>()
-                    })
-                    .filter(|w| !w.is_empty())
-                    .collect()
-            } else {
-                vec![]
-            },
+            language: args.language.clone(),
+            context_bias: bias_words(&args, &config),
         })
         .await?;
 
+    finish(text, &args, &config).await
+}
+
+/// Correction, clipboard and stdout, shared by every input path.
+async fn finish(
+    text: String,
+    args: &Args,
+    config: &config::Config,
+) -> Result<(), Box<dyn std::error::Error>> {
     let final_text = if args.correct {
         status("Correcting with Claude...");
 
