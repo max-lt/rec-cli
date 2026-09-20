@@ -11,7 +11,7 @@ use backend::Backend;
 use clap::{Parser, Subcommand};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use hound::{WavSpec, WavWriter};
-use std::io::{self, BufWriter, Write};
+use std::io::{self, BufWriter, IsTerminal, Write};
 use std::sync::{Arc, Mutex};
 
 const MODEL_V1: &str = "voxtral-mini-2507";
@@ -145,7 +145,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let config = config::Config::load()?;
         let weights =
             std::env::var("REC_LOCAL_WEIGHTS").unwrap_or_else(|_| local::DEFAULT_WEIGHTS.into());
-        status("Listening...");
+        if io::stdin().is_terminal() {
+            return Err("--pcm reads audio from stdin: pipe 16 kHz mono 16-bit PCM into it".into());
+        }
+        status("Reading audio...");
         let text =
             local::transcribe_stream(io::stdin().lock(), &weights, &bias_words(&args, &config))?;
         return finish(text, &args, &config).await;
