@@ -100,6 +100,25 @@ Weights (`mlx-community/Voxtral-Mini-4B-Realtime-6bit`, ~3.4 GB) download to
 `~/.cache/huggingface` on first run; override with `REC_LOCAL_WEIGHTS` (repo id
 or local snapshot directory).
 
+### Continuous captions
+
+```bash
+rec --local --captions              # microphone, Enter stops it
+rec --local --captions -f take.wav  # a file, at once
+ffmpeg -re -i take.wav -f s16le -ar 16000 -ac 1 - | rec --local --captions --pcm
+```
+
+`--captions` prints text for as long as audio arrives, instead of waiting for
+the end. It is meant for following a conversation, not for dictation.
+
+It uses the streaming decoder, which emits a word before it has heard the end
+of the sentence, and never revises what it printed. The text reads worse than
+the other modes. `--bias` and `--correct` do not apply.
+
+Measured on 11.58 s of speech pushed at real time: the first words appear
+after about 3 s, then the text grows as the audio arrives. The whole run costs
+about a third of one core.
+
 ### Basic transcription
 
 ```bash

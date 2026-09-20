@@ -61,6 +61,11 @@ struct Args {
     #[arg(long, global = true, requires = "local", conflicts_with = "file")]
     pcm: bool,
 
+    /// Print text continuously, for as long as audio arrives
+    #[cfg(feature = "local")]
+    #[arg(long, global = true, requires = "local", conflicts_with = "correct")]
+    captions: bool,
+
     /// Record the whole take before transcribing it, instead of encoding
     /// while the microphone runs
     #[cfg(feature = "local")]
@@ -142,6 +147,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.save()?;
         eprintln!("Word added: {}", word);
         return Ok(());
+    }
+
+    // Continuous captions come first: they take a source that the other
+    // branches would claim.
+    #[cfg(feature = "local")]
+    if args.captions {
+        return run_captions(&args).await;
     }
 
     // The caller records and pushes the samples in, so the encoder runs
@@ -422,4 +434,90 @@ fn downmix(data: &[f32], channels: usize) -> Vec<f32> {
     data.chunks_exact(channels)
         .map(|frame| frame.iter().sum::<f32>() / channels as f32)
         .collect()
+}
+/// `--captions`: prints text for as long as audio arrives, from the
+/// microphone, from stdin or from a file.
+#[cfg(feature = "local")]
+async fn run_captions(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
+    let weights =
+        std::env::var("REC_LOCAL_WEIGHTS").unwrap_or_else(|_| local::DEFAULT_WEIGHTS.into());
+    let (sender, receiver) = std::sync::mpsc::channel::<Vec<f32>>();
+
+    if let Some(path) = args.file.clone() {
+        let bytes = std::fs::read(path)?;
+        std::thread::spawn(move || local::send_file(&bytes, &sender).ok());
+        return print_captions(receiver, 16_000, &weights, args);
+    }
+
+    if args.pcm {
+        if io::stdin().is_terminal() {
+            return Err("--pcm reads audio from stdin: pipe 16 kHz mono 16-bit PCM into it".into());
+        }
+        std::thread::spawn(move || local::send_pcm(io::stdin().lock(), &sender).ok());
+        return print_captions(receiver, 16_000, &weights, args);
+    }
+
+    status("Loading...");
+    let host = cpal::default_host();
+    let device = host.default_input_device().ok_or("No mic")?;
+    let device_config = device.default_input_config()?;
+    let rate = device_config.sample_rate();
+    let channels = device_config.channels() as usize;
+
+    // The captions run on their own thread, so Enter can drop the stream here
+    // and let the decoder flush what it still holds.
+    let owned = weights.clone();
+    let worker = std::thread::spawn(move || local::caption(receiver, rate, &owned));
+
+    let stream = match device_config.sample_format() {
+        cpal::SampleFormat::F32 => device.build_input_stream(
+            &device_config.into(),
+            move |data: &[f32], _: &_| {
+                sender.send(downmix(data, channels)).ok();
+            },
+            |err| eprintln!("Error: {}", err),
+            None,
+        )?,
+        cpal::SampleFormat::I16 => device.build_input_stream(
+            &device_config.into(),
+            move |data: &[i16], _: &_| {
+                let floats: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
+                sender.send(downmix(&floats, channels)).ok();
+            },
+            |err| eprintln!("Error: {}", err),
+            None,
+        )?,
+        _ => return Err("Unsupported format".into()),
+    };
+
+    stream.play()?;
+    status("");
+
+    let mut line = String::new();
+    io::stdin().read_line(&mut line)?;
+    drop(stream);
+
+    let text = worker
+        .join()
+        .map_err(|_| "captions thread panicked")?
+        .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+    if args.clip && !text.is_empty() {
+        Clipboard::new()?.set_text(&text)?;
+    }
+    Ok(())
+}
+
+#[cfg(feature = "local")]
+fn print_captions(
+    receiver: std::sync::mpsc::Receiver<Vec<f32>>,
+    rate: u32,
+    weights: &str,
+    args: &Args,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let text = local::caption(receiver, rate, weights)
+        .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+    if args.clip && !text.is_empty() {
+        Clipboard::new()?.set_text(&text)?;
+    }
+    Ok(())
 }

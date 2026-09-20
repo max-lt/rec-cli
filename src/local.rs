@@ -2,11 +2,12 @@
 //! Only compiled with the `local` feature.
 
 use std::collections::HashSet;
-use std::io::Read;
+use std::io::{self, Read, Write};
 use std::path::Path;
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{Receiver, Sender};
 
 use voxtral_mlx::model::encode::StreamEncoder;
+use voxtral_mlx::model::session::StreamSession;
 use voxtral_mlx::tokenizer::TekkenEncoder;
 use voxtral_mlx::audio::LiveResampler;
 use voxtral_mlx::{audio, loader};
@@ -169,4 +170,89 @@ pub fn transcribe_chunked(wav_data: &[u8], weights: &str, bias_words: &[String])
     let embeds = encoder.finish(&mut model)?.ok_or("No audio")?;
     let tokens = model.transcribe_tokens_from_embeds(&embeds, 0.0, &logit_bias)?;
     Ok(tokenizer.decode(&tokens)?.trim().to_string())
+}
+
+/// Continuous captions: prints text as it is decoded, for as long as samples
+/// arrive. The caller drops the sender to stop. Returns the whole transcript.
+///
+/// This uses the streaming decoder, which emits text before it has heard the
+/// end of a sentence. It reads worse than the batch decoder, and it never
+/// revises what it already printed. Custom word bias does not apply.
+pub fn caption(
+    samples: Receiver<Vec<f32>>,
+    input_rate: u32,
+    weights: &str,
+) -> std::result::Result<String, String> {
+    captions(samples, input_rate, weights).map_err(|e| e.to_string())
+}
+
+fn captions(samples: Receiver<Vec<f32>>, input_rate: u32, weights: &str) -> Result<String> {
+    let snapshot = loader::resolve_weights_dir(weights)?;
+    let (mut model, tokenizer) =
+        loader::load_model(snapshot.to_str().ok_or("non-utf8 weights path")?)?;
+
+    let mut resampler = LiveResampler::new(input_rate, 16_000)?;
+    let mut session = StreamSession::new(&mut model, 0.0)?;
+    let mut tokens: Vec<u32> = Vec::new();
+    let mut printed = String::new();
+
+    while let Ok(chunk) = samples.recv() {
+        let resampled = resampler.process(&chunk)?;
+        if resampled.is_empty() {
+            continue;
+        }
+        let new = session.feed(&mut model, &resampled)?;
+        if !new.is_empty() {
+            tokens.extend(new);
+            emit(&tokenizer.decode(&tokens)?, &mut printed);
+        }
+    }
+
+    tokens.extend(session.flush(&mut model)?);
+    emit(&tokenizer.decode(&tokens)?, &mut printed);
+    println!();
+    Ok(printed)
+}
+
+/// Prints whatever the decoder added since the last call. Tokens only ever
+/// append, so a full decode extends the previous one.
+fn emit(text: &str, printed: &mut String) {
+    let Some(added) = text.strip_prefix(printed.as_str()) else {
+        return;
+    };
+    if added.is_empty() {
+        return;
+    }
+    print!("{added}");
+    io::stdout().flush().ok();
+    printed.push_str(added);
+}
+
+/// Sends a WAV file's samples at 16 kHz, in one second chunks, the order of
+/// magnitude a capture delivers.
+pub fn send_file(wav_data: &[u8], sender: &Sender<Vec<f32>>) -> Result<()> {
+    let raw = audio::load_wav_bytes(wav_data)?;
+    let resampled = audio::resample_to_16k(&raw)?;
+    for chunk in resampled.samples.chunks(16_000) {
+        if sender.send(chunk.to_vec()).is_err() {
+            break;
+        }
+    }
+    Ok(())
+}
+
+/// Sends 16 kHz mono 16-bit PCM read from `input`.
+pub fn send_pcm(mut input: impl Read, sender: &Sender<Vec<f32>>) -> Result<()> {
+    let mut buffer = [0u8; 8192];
+    let mut odd: Option<u8> = None;
+    loop {
+        let read = input.read(&mut buffer)?;
+        if read == 0 {
+            return Ok(());
+        }
+        let samples = to_samples(&buffer[..read], &mut odd);
+        if !samples.is_empty() && sender.send(samples).is_err() {
+            return Ok(());
+        }
+    }
 }
