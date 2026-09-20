@@ -73,7 +73,27 @@ MACOSX_DEPLOYMENT_TARGET = "15.0"
 ```bash
 rec --local            # record & transcribe on-device, no API key needed
 rec --local --bias     # nudge decoding toward your custom words
+rec --local --batch    # record the whole take first, then transcribe
 ```
+
+`--local` encodes while the microphone runs, so the model load and the encoder
+are done when you press Enter and only the decoder is left. On a 2 second take
+that is 0.50 s of waiting against 0.59 s with `--batch`.
+
+The encoder is causal, so the result does not depend on audio that comes
+later, and the decoder still sees the whole take. The two paths differ by the
+2% floating point noise of the streaming encoder, which flips a word either
+way. The microphone and `-f` both accept `--batch`, so the two paths can be
+compared on the same audio.
+
+Another program can push audio in instead:
+
+```bash
+ffmpeg -re -i take.wav -f s16le -ar 16000 -ac 1 - | rec --local --pcm
+```
+
+`--pcm` reads 16 kHz mono 16-bit PCM from stdin and encodes it as it arrives.
+It refuses to run on a terminal.
 
 `--v2` and `--language` are API-only and rejected in combination with `--local`.
 Weights (`mlx-community/Voxtral-Mini-4B-Realtime-6bit`, ~3.4 GB) download to

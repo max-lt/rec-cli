@@ -60,6 +60,12 @@ struct Args {
     #[cfg(feature = "local")]
     #[arg(long, global = true, requires = "local", conflicts_with = "file")]
     pcm: bool,
+
+    /// Record the whole take before transcribing it, instead of encoding
+    /// while the microphone runs
+    #[cfg(feature = "local")]
+    #[arg(long, global = true, requires = "local", conflicts_with = "pcm")]
+    batch: bool,
 }
 
 #[derive(Subcommand)]
@@ -151,6 +157,80 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         status("Reading audio...");
         let text =
             local::transcribe_stream(io::stdin().lock(), &weights, &bias_words(&args, &config))?;
+        return finish(text, &args, &config).await;
+    }
+
+    // A file, through the same encoder a capture uses. Nothing overlaps, so
+    // it saves no time; it exists to compare both paths on equal audio.
+    #[cfg(feature = "local")]
+    if args.local && !args.batch {
+        if let Some(path) = args.file.clone() {
+            let config = config::Config::load()?;
+            let weights = std::env::var("REC_LOCAL_WEIGHTS")
+                .unwrap_or_else(|_| local::DEFAULT_WEIGHTS.into());
+            status("Reading file...");
+            let bytes = std::fs::read(path)?;
+            status("Transcribing...");
+            let text = local::transcribe_chunked(&bytes, &weights, &bias_words(&args, &config))?;
+            return finish(text, &args, &config).await;
+        }
+    }
+
+    // Local microphone capture, encoded while it runs. --batch keeps the old
+    // path, which records the whole take first.
+    #[cfg(feature = "local")]
+    if args.local && !args.batch && args.file.is_none() {
+        let config = config::Config::load()?;
+        let weights =
+            std::env::var("REC_LOCAL_WEIGHTS").unwrap_or_else(|_| local::DEFAULT_WEIGHTS.into());
+        let bias = bias_words(&args, &config);
+
+        status("Loading...");
+        let host = cpal::default_host();
+        let device = host.default_input_device().ok_or("No mic")?;
+        let device_config = device.default_input_config()?;
+        let rate = device_config.sample_rate();
+        let channels = device_config.channels() as usize;
+
+        let (sender, receiver) = std::sync::mpsc::channel::<Vec<f32>>();
+        // MLX stays on one thread, and this one owns the model.
+        let worker =
+            std::thread::spawn(move || local::transcribe_live(receiver, rate, &weights, &bias));
+
+        let stream = match device_config.sample_format() {
+            cpal::SampleFormat::F32 => device.build_input_stream(
+                &device_config.into(),
+                move |data: &[f32], _: &_| {
+                    sender.send(downmix(data, channels)).ok();
+                },
+                |err| eprintln!("Error: {}", err),
+                None,
+            )?,
+            cpal::SampleFormat::I16 => device.build_input_stream(
+                &device_config.into(),
+                move |data: &[i16], _: &_| {
+                    let floats: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
+                    sender.send(downmix(&floats, channels)).ok();
+                },
+                |err| eprintln!("Error: {}", err),
+                None,
+            )?,
+            _ => return Err("Unsupported format".into()),
+        };
+
+        stream.play()?;
+        status("Recording...");
+
+        let mut line = String::new();
+        io::stdin().read_line(&mut line)?;
+        // Dropping the stream drops the sender, which ends the worker loop.
+        drop(stream);
+
+        status_up("Transcribing...");
+        let text = worker
+            .join()
+            .map_err(|_| "recorder thread panicked")?
+            .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
         return finish(text, &args, &config).await;
     }
 
@@ -333,4 +413,15 @@ async fn finish(
     }
 
     Ok(())
+}
+
+/// Averages the channels of an interleaved buffer into mono.
+#[cfg(feature = "local")]
+fn downmix(data: &[f32], channels: usize) -> Vec<f32> {
+    if channels <= 1 {
+        return data.to_vec();
+    }
+    data.chunks_exact(channels)
+        .map(|frame| frame.iter().sum::<f32>() / channels as f32)
+        .collect()
 }
