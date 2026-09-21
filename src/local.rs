@@ -44,6 +44,7 @@ pub fn transcribe_stream(
         loader::load_model(snapshot.to_str().ok_or("non-utf8 weights path")?)?;
     let logit_bias = logit_bias(&snapshot, bias_words)?;
 
+    guard_memory();
     let mut encoder = StreamEncoder::new(&mut model);
     let mut buffer = [0u8; 8192];
     // A read can split a sample in half.
@@ -135,6 +136,7 @@ fn live(
     let logit_bias = logit_bias(&snapshot, bias_words)?;
 
     let mut resampler = LiveResampler::new(input_rate, 16_000)?;
+    guard_memory();
     let mut encoder = StreamEncoder::new(&mut model);
 
     while let Ok(chunk) = samples.recv() {
@@ -161,6 +163,7 @@ pub fn transcribe_chunked(wav_data: &[u8], weights: &str, bias_words: &[String])
     let raw = audio::load_wav_bytes(wav_data)?;
     let resampled = audio::resample_to_16k(&raw)?;
 
+    guard_memory();
     let mut encoder = StreamEncoder::new(&mut model);
     // One second per feed, the order of magnitude a capture delivers.
     for chunk in resampled.samples.chunks(16_000) {
@@ -289,14 +292,21 @@ const CACHE_LIMIT: usize = 512 * 1024 * 1024;
 /// through Metal, so this memory never shows in the resident set size and a
 /// runaway session freezes the machine with no warning from `ps`.
 ///
-/// Override the ceiling with REC_MEMORY_LIMIT_GB.
+/// The encoder cache grows with the length of the take, so a long one walks
+/// into the ceiling. 7 GB leaves more than 2 GB over the measured peak.
+/// Override it with REC_MEMORY_LIMIT_GB.
 fn guard_memory() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(guard_memory_once);
+}
+
+fn guard_memory_once() {
     memory::set_cache_limit(CACHE_LIMIT).ok();
 
     let limit_gb: usize = std::env::var("REC_MEMORY_LIMIT_GB")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(64);
+        .unwrap_or(7);
     let limit = limit_gb * 1024 * 1024 * 1024;
     let debug = std::env::var("REC_MEMORY_DEBUG").is_ok();
 

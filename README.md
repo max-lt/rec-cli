@@ -119,6 +119,26 @@ Measured on 11.58 s of speech pushed at real time: the first words appear
 after about 3 s, then the text grows as the audio arrives. The whole run costs
 about a third of one core.
 
+
+### Memory
+
+The encoder keeps an attention cache of everything it has heard, which grows
+by 13 MB per second of audio, and every step allocates a fresh buffer of the
+whole cache. The MLX allocator keeps freed buffers for reuse, one per size it
+has seen, so the memory it holds grows with the square of the take.
+
+A local session therefore caps the allocator at 512 MB, and `--captions`
+closes and reopens its session every 30 seconds, which bounds the cache and
+makes each window reuse the sizes of the one before.
+
+A guard thread stops the process past 7 GB. The measured peak is 4.8 GB, so a
+normal run never reaches it, and a runaway one stops instead of freezing the
+machine. Raise it with `REC_MEMORY_LIMIT_GB`. `REC_MEMORY_DEBUG` prints the
+counters every second.
+
+MLX allocates through Metal, so none of this shows in `ps`, which reports a
+flat figure while the machine runs out of memory.
+
 ### Basic transcription
 
 ```bash
