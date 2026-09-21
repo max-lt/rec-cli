@@ -291,7 +291,7 @@ const CACHE_LIMIT: usize = 512 * 1024 * 1024;
 ///
 /// Override the ceiling with REC_MEMORY_LIMIT_GB.
 fn guard_memory() {
-    memory::set_cache_limit(CACHE_LIMIT);
+    memory::set_cache_limit(CACHE_LIMIT).ok();
 
     let limit_gb: usize = std::env::var("REC_MEMORY_LIMIT_GB")
         .ok()
@@ -302,8 +302,8 @@ fn guard_memory() {
 
     std::thread::spawn(move || loop {
         std::thread::sleep(std::time::Duration::from_secs(1));
-        let active = memory::active_memory();
-        let cached = memory::cache_memory();
+        let active = memory::active_memory().unwrap_or(0);
+        let cached = memory::cache_memory().unwrap_or(0);
         let used = active + cached;
         if debug {
             eprintln!(

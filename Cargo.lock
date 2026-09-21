@@ -1532,8 +1532,9 @@ dependencies = [
 
 [[package]]
 name = "mlx-internal-macros"
-version = "0.25.3"
-source = "git+https://github.com/oxideai/mlx-rs#f4aa309c79b6be35255ca7d34157dfc10d9ed4c9"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf724ff93a5ddcf64299f7786844301b147e0e37a7de30a7e1536fd60fb7e9f1"
 dependencies = [
  "darling",
  "itertools 0.14.0",
@@ -1544,8 +1545,9 @@ dependencies = [
 
 [[package]]
 name = "mlx-macros"
-version = "0.25.3"
-source = "git+https://github.com/oxideai/mlx-rs#f4aa309c79b6be35255ca7d34157dfc10d9ed4c9"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df160e2aa7cd71a8bf652eeefa9a03117c775327071b68cb7750e1be7d6985e7"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -1555,8 +1557,9 @@ dependencies = [
 
 [[package]]
 name = "mlx-rs"
-version = "0.25.3"
-source = "git+https://github.com/oxideai/mlx-rs#f4aa309c79b6be35255ca7d34157dfc10d9ed4c9"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44774de28d595d6bc0f9ae359e5365321b96eab252698ec0773406c0cf77762b"
 dependencies = [
  "dyn-clone",
  "half",
@@ -1578,8 +1581,9 @@ dependencies = [
 
 [[package]]
 name = "mlx-sys"
-version = "0.2.0"
-source = "git+https://github.com/oxideai/mlx-rs#f4aa309c79b6be35255ca7d34157dfc10d9ed4c9"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1848b6f1686114039e6e0adcf1578911e2e4d7707b9768ad61da074132319e1c"
 dependencies = [
  "bindgen",
  "cc",
@@ -2600,18 +2604,18 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "strum"
-version = "0.27.2"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af23d6f6c1a224baef9d3f61e287d2761385a5b88fdab4eb4c6f11aeb54c4bcf"
+checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
 dependencies = [
  "strum_macros",
 ]
 
 [[package]]
 name = "strum_macros"
-version = "0.27.2"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7695ce3845ea4b33927c055a39dc438a45b059f7c1b3d91d38d10355fb8cbca7"
+checksum = "ab85eea0270ee17587ed4156089e10b9e6880ee688791d45a905f5b1ca36f664"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -3080,7 +3084,6 @@ dependencies = [
  "hf-hub",
  "hound",
  "mlx-rs",
- "mlx-sys",
  "num-complex",
  "rubato",
  "rustc-hash 1.1.0",
