@@ -14,6 +14,11 @@ use hound::{WavSpec, WavWriter};
 use std::io::{self, BufWriter, IsTerminal, Write};
 use std::sync::{Arc, Mutex};
 
+/// Chunks of captured audio held for the model. Bounded, or a model that
+/// falls behind grows the queue without limit.
+#[cfg(feature = "local")]
+const SAMPLE_QUEUE: usize = 128;
+
 const MODEL_V1: &str = "voxtral-mini-2507";
 const MODEL_V2: &str = "voxtral-mini-2602";
 
@@ -202,7 +207,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let rate = device_config.sample_rate();
         let channels = device_config.channels() as usize;
 
-        let (sender, receiver) = std::sync::mpsc::channel::<Vec<f32>>();
+        let (sender, receiver) = std::sync::mpsc::sync_channel::<Vec<f32>>(SAMPLE_QUEUE);
         // MLX stays on one thread, and this one owns the model.
         let worker =
             std::thread::spawn(move || local::transcribe_live(receiver, rate, &weights, &bias));
@@ -211,7 +216,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             cpal::SampleFormat::F32 => device.build_input_stream(
                 &device_config.into(),
                 move |data: &[f32], _: &_| {
-                    sender.send(downmix(data, channels)).ok();
+                    offer(&sender, downmix(data, channels));
                 },
                 |err| eprintln!("Error: {}", err),
                 None,
@@ -220,7 +225,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &device_config.into(),
                 move |data: &[i16], _: &_| {
                     let floats: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
-                    sender.send(downmix(&floats, channels)).ok();
+                    offer(&sender, downmix(&floats, channels));
                 },
                 |err| eprintln!("Error: {}", err),
                 None,
@@ -441,7 +446,7 @@ fn downmix(data: &[f32], channels: usize) -> Vec<f32> {
 async fn run_captions(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
     let weights =
         std::env::var("REC_LOCAL_WEIGHTS").unwrap_or_else(|_| local::DEFAULT_WEIGHTS.into());
-    let (sender, receiver) = std::sync::mpsc::channel::<Vec<f32>>();
+    let (sender, receiver) = std::sync::mpsc::sync_channel::<Vec<f32>>(SAMPLE_QUEUE);
 
     if let Some(path) = args.file.clone() {
         let bytes = std::fs::read(path)?;
@@ -473,7 +478,7 @@ async fn run_captions(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
         cpal::SampleFormat::F32 => device.build_input_stream(
             &device_config.into(),
             move |data: &[f32], _: &_| {
-                sender.send(downmix(data, channels)).ok();
+                offer(&sender, downmix(data, channels));
             },
             |err| eprintln!("Error: {}", err),
             None,
@@ -482,7 +487,7 @@ async fn run_captions(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
             &device_config.into(),
             move |data: &[i16], _: &_| {
                 let floats: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
-                sender.send(downmix(&floats, channels)).ok();
+                offer(&sender, downmix(&floats, channels));
             },
             |err| eprintln!("Error: {}", err),
             None,
@@ -520,4 +525,15 @@ fn print_captions(
         Clipboard::new()?.set_text(&text)?;
     }
     Ok(())
+}
+/// Hands captured audio to the model, and drops it when the model is behind.
+/// Blocking here would stall the audio callback and glitch the capture.
+#[cfg(feature = "local")]
+fn offer(sender: &std::sync::mpsc::SyncSender<Vec<f32>>, samples: Vec<f32>) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static WARNED: AtomicBool = AtomicBool::new(false);
+
+    if sender.try_send(samples).is_err() && !WARNED.swap(true, Ordering::Relaxed) {
+        eprintln!("\nrec: the model is behind, audio is being dropped");
+    }
 }

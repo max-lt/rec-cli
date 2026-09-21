@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 use std::io::{self, Read, Write};
 use std::path::Path;
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::{Receiver, SyncSender};
 
 use voxtral_mlx::model::encode::StreamEncoder;
 use voxtral_mlx::model::session::StreamSession;
@@ -258,7 +258,7 @@ fn emit(text: &str, window: &mut String, transcript: &mut String) {
 
 /// Sends a WAV file's samples at 16 kHz, in one second chunks, the order of
 /// magnitude a capture delivers.
-pub fn send_file(wav_data: &[u8], sender: &Sender<Vec<f32>>) -> Result<()> {
+pub fn send_file(wav_data: &[u8], sender: &SyncSender<Vec<f32>>) -> Result<()> {
     let raw = audio::load_wav_bytes(wav_data)?;
     let resampled = audio::resample_to_16k(&raw)?;
     for chunk in resampled.samples.chunks(16_000) {
@@ -270,7 +270,7 @@ pub fn send_file(wav_data: &[u8], sender: &Sender<Vec<f32>>) -> Result<()> {
 }
 
 /// Sends 16 kHz mono 16-bit PCM read from `input`.
-pub fn send_pcm(mut input: impl Read, sender: &Sender<Vec<f32>>) -> Result<()> {
+pub fn send_pcm(mut input: impl Read, sender: &SyncSender<Vec<f32>>) -> Result<()> {
     let mut buffer = [0u8; 8192];
     let mut odd: Option<u8> = None;
     loop {
