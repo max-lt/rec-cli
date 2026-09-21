@@ -3080,6 +3080,7 @@ dependencies = [
  "hf-hub",
  "hound",
  "mlx-rs",
+ "mlx-sys",
  "num-complex",
  "rubato",
  "rustc-hash 1.1.0",

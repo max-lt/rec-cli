@@ -10,7 +10,7 @@ use voxtral_mlx::model::encode::StreamEncoder;
 use voxtral_mlx::model::session::StreamSession;
 use voxtral_mlx::tokenizer::TekkenEncoder;
 use voxtral_mlx::audio::LiveResampler;
-use voxtral_mlx::{audio, loader};
+use voxtral_mlx::{audio, loader, memory};
 
 pub const DEFAULT_WEIGHTS: &str = "mlx-community/Voxtral-Mini-4B-Realtime-6bit";
 
@@ -186,38 +186,62 @@ pub fn caption(
     captions(samples, input_rate, weights).map_err(|e| e.to_string())
 }
 
+/// The encoder KV cache grows by concatenation on every step and only stops
+/// at max_size=100_000, which no session reaches. Left alone it costs about
+/// 13 MB per second of audio, and every step copies the whole cache, so the
+/// allocator holds one buffer of every size it has seen. A session is
+/// therefore closed and reopened on this window.
+const WINDOW_SECONDS: usize = 30;
+
 fn captions(samples: Receiver<Vec<f32>>, input_rate: u32, weights: &str) -> Result<String> {
     let snapshot = loader::resolve_weights_dir(weights)?;
     let (mut model, tokenizer) =
         loader::load_model(snapshot.to_str().ok_or("non-utf8 weights path")?)?;
 
+    guard_memory();
+
     let mut resampler = LiveResampler::new(input_rate, 16_000)?;
     let mut session = StreamSession::new(&mut model, 0.0)?;
     let mut tokens: Vec<u32> = Vec::new();
-    let mut printed = String::new();
+    // Text of the open session, against the whole transcript.
+    let mut window = String::new();
+    let mut transcript = String::new();
+    let mut fed = 0usize;
+    let window_samples = WINDOW_SECONDS * 16_000;
 
     while let Ok(chunk) = samples.recv() {
         let resampled = resampler.process(&chunk)?;
         if resampled.is_empty() {
             continue;
         }
+        fed += resampled.len();
+
         let new = session.feed(&mut model, &resampled)?;
         if !new.is_empty() {
             tokens.extend(new);
-            emit(&tokenizer.decode(&tokens)?, &mut printed);
+            emit(&tokenizer.decode(&tokens)?, &mut window, &mut transcript);
+        }
+
+        if fed >= window_samples {
+            tokens.extend(session.flush(&mut model)?);
+            emit(&tokenizer.decode(&tokens)?, &mut window, &mut transcript);
+            session = StreamSession::new(&mut model, 0.0)?;
+            tokens.clear();
+            window.clear();
+            fed = 0;
         }
     }
 
     tokens.extend(session.flush(&mut model)?);
-    emit(&tokenizer.decode(&tokens)?, &mut printed);
+    emit(&tokenizer.decode(&tokens)?, &mut window, &mut transcript);
     println!();
-    Ok(printed)
+    Ok(transcript)
 }
 
 /// Prints whatever the decoder added since the last call. Tokens only ever
 /// append, so a full decode extends the previous one.
-fn emit(text: &str, printed: &mut String) {
-    let Some(added) = text.strip_prefix(printed.as_str()) else {
+fn emit(text: &str, window: &mut String, transcript: &mut String) {
+    let Some(added) = text.strip_prefix(window.as_str()) else {
         return;
     };
     if added.is_empty() {
@@ -225,7 +249,8 @@ fn emit(text: &str, printed: &mut String) {
     }
     print!("{added}");
     io::stdout().flush().ok();
-    printed.push_str(added);
+    window.push_str(added);
+    transcript.push_str(added);
 }
 
 /// Sends a WAV file's samples at 16 kHz, in one second chunks, the order of
@@ -255,4 +280,45 @@ pub fn send_pcm(mut input: impl Read, sender: &Sender<Vec<f32>>) -> Result<()> {
             return Ok(());
         }
     }
+}
+
+/// Bytes the allocator may hold for reuse between steps.
+const CACHE_LIMIT: usize = 512 * 1024 * 1024;
+
+/// Stops the process before the machine runs out of memory. MLX allocates
+/// through Metal, so this memory never shows in the resident set size and a
+/// runaway session freezes the machine with no warning from `ps`.
+///
+/// Override the ceiling with REC_MEMORY_LIMIT_GB.
+fn guard_memory() {
+    memory::set_cache_limit(CACHE_LIMIT);
+
+    let limit_gb: usize = std::env::var("REC_MEMORY_LIMIT_GB")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(64);
+    let limit = limit_gb * 1024 * 1024 * 1024;
+    let debug = std::env::var("REC_MEMORY_DEBUG").is_ok();
+
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        let active = memory::active_memory();
+        let cached = memory::cache_memory();
+        let used = active + cached;
+        if debug {
+            eprintln!(
+                "rec: mlx active {} MB, cache {} MB",
+                active / (1024 * 1024),
+                cached / (1024 * 1024)
+            );
+        }
+        if used > limit {
+            eprintln!(
+                "\nrec: MLX is holding {} GB, over the {} GB ceiling. Stopping.",
+                used / (1024 * 1024 * 1024),
+                limit_gb
+            );
+            std::process::exit(70);
+        }
+    });
 }
