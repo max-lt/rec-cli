@@ -11,7 +11,9 @@ use backend::Backend;
 use clap::{Parser, Subcommand};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use hound::{WavSpec, WavWriter};
-use std::io::{self, BufWriter, IsTerminal, Write};
+#[cfg(feature = "local")]
+use std::io::IsTerminal;
+use std::io::{self, BufWriter, Write};
 use std::sync::{Arc, Mutex};
 
 /// Chunks of captured audio held for the model. Bounded, or a model that
@@ -180,7 +182,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // A file, through the same encoder a capture uses. Nothing overlaps, so
     // it saves no time; it exists to compare both paths on equal audio.
     #[cfg(feature = "local")]
-    if args.local && !args.batch && let Some(path) = args.file.clone() {
+    if args.local
+        && !args.batch
+        && let Some(path) = args.file.clone()
+    {
         let config = config::Config::load()?;
         let weights =
             std::env::var("REC_LOCAL_WEIGHTS").unwrap_or_else(|_| local::DEFAULT_WEIGHTS.into());
@@ -378,15 +383,15 @@ async fn finish(
                 let final_text = output.corrected.unwrap_or_else(|| text.clone());
 
                 // Save to history only if correction was made
-                if was_corrected {
-                    if let Err(e) = config::Config::add_to_history(
+                if was_corrected
+                    && let Err(e) = config::Config::add_to_history(
                         &text,
                         &final_text,
                         &config.claude_model,
                         &config.custom_words,
-                    ) {
-                        eprintln!("Warning: Failed to save to history: {}", e);
-                    }
+                    )
+                {
+                    eprintln!("Warning: Failed to save to history: {}", e);
                 }
 
                 // Display

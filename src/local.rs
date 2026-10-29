@@ -6,10 +6,10 @@ use std::io::{self, Read, Write};
 use std::path::Path;
 use std::sync::mpsc::{Receiver, SyncSender};
 
+use voxtral_mlx::audio::LiveResampler;
 use voxtral_mlx::model::encode::StreamEncoder;
 use voxtral_mlx::model::session::StreamSession;
 use voxtral_mlx::tokenizer::TekkenEncoder;
-use voxtral_mlx::audio::LiveResampler;
 use voxtral_mlx::{audio, loader, memory};
 
 pub const DEFAULT_WEIGHTS: &str = "mlx-community/Voxtral-Mini-4B-Realtime-6bit";
@@ -81,12 +81,12 @@ fn to_samples(bytes: &[u8], odd: &mut Option<u8>) -> Vec<f32> {
         }
     }
 
-    let pairs = rest.len() / 2;
-    for pair in rest[..pairs * 2].chunks_exact(2) {
-        samples.push(sample(pair[0], pair[1]));
+    let (pairs, tail) = rest.as_chunks::<2>();
+    for &[lo, hi] in pairs {
+        samples.push(sample(lo, hi));
     }
-    if rest.len() % 2 == 1 {
-        *odd = Some(rest[rest.len() - 1]);
+    if let [last] = tail {
+        *odd = Some(*last);
     }
     samples
 }
@@ -107,7 +107,10 @@ fn logit_bias(snapshot: &Path, bias_words: &[String]) -> Result<Vec<(u32, f32)>>
         ids.extend(encoder.encode(word));
         ids.extend(encoder.encode(&format!(" {word}")));
     }
-    Ok(ids.into_iter().map(|id| (id, CONTEXT_BIAS_STRENGTH)).collect())
+    Ok(ids
+        .into_iter()
+        .map(|id| (id, CONTEXT_BIAS_STRENGTH))
+        .collect())
 }
 
 /// Transcribes a live capture: the caller sends mono samples at `input_rate`
@@ -310,25 +313,27 @@ fn guard_memory_once() {
     let limit = limit_gb * 1024 * 1024 * 1024;
     let debug = std::env::var("REC_MEMORY_DEBUG").is_ok();
 
-    std::thread::spawn(move || loop {
-        std::thread::sleep(std::time::Duration::from_secs(1));
-        let active = memory::active_memory().unwrap_or(0);
-        let cached = memory::cache_memory().unwrap_or(0);
-        let used = active + cached;
-        if debug {
-            eprintln!(
-                "rec: mlx active {} MB, cache {} MB",
-                active / (1024 * 1024),
-                cached / (1024 * 1024)
-            );
-        }
-        if used > limit {
-            eprintln!(
-                "\nrec: MLX is holding {} GB, over the {} GB ceiling. Stopping.",
-                used / (1024 * 1024 * 1024),
-                limit_gb
-            );
-            std::process::exit(70);
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            let active = memory::active_memory().unwrap_or(0);
+            let cached = memory::cache_memory().unwrap_or(0);
+            let used = active + cached;
+            if debug {
+                eprintln!(
+                    "rec: mlx active {} MB, cache {} MB",
+                    active / (1024 * 1024),
+                    cached / (1024 * 1024)
+                );
+            }
+            if used > limit {
+                eprintln!(
+                    "\nrec: MLX is holding {} GB, over the {} GB ceiling. Stopping.",
+                    used / (1024 * 1024 * 1024),
+                    limit_gb
+                );
+                std::process::exit(70);
+            }
         }
     });
 }
