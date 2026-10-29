@@ -1,6 +1,6 @@
 [package]
 name = "rec"
-version = "0.4.2"
+version = "0.4.3"
 edition = "2024"
 description = "Quick speech-to-text for devs"
 
@@ -15,7 +15,7 @@ local = ["dep:voxtral-mlx"]
 
 [dependencies]
 arboard = "3.6.1"
-voxtral-mlx = { git = "https://github.com/max-lt/voxtral-mlx-rs", rev = "54c2fe6ec04c137a9339b422a31ff4043c7a9729", optional = true }
+voxtral-mlx = { git = "https://github.com/max-lt/voxtral-mlx-rs", rev = "3e940d80e1af8208715120ab5b30687ff6bbcf4a", optional = true }
 clap = { version = "4", features = ["derive"] }
 cpal = "0.17"
 hound = "3.5.1"
