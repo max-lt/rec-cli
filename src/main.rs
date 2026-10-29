@@ -23,7 +23,7 @@ const MODEL_V1: &str = "voxtral-mini-2507";
 const MODEL_V2: &str = "voxtral-mini-2602";
 
 #[derive(Parser)]
-#[command(name = "rec", about = "Quick speech-to-text for devs")]
+#[command(name = "rec", version, about = "Quick speech-to-text for devs")]
 struct Args {
     #[command(subcommand)]
     command: Option<Commands>,
